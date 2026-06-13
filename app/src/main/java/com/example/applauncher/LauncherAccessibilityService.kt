@@ -1,10 +1,6 @@
 package com.example.applauncher
 
 import android.accessibilityservice.AccessibilityService
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Intent
 import android.os.PowerManager
 import android.util.Log
@@ -62,40 +58,13 @@ class LauncherAccessibilityService : AccessibilityService() {
             )
         }
 
-        // Full-screen notification for screen-on effect
-        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel(
-            AlarmReceiver.ALARM_CHANNEL_ID,
-            "定时触发",
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "定时启动应用通知"
-            setBypassDnd(true)
-        }
-        nm.createNotificationChannel(channel)
-
+        // Directly start BridgeActivity — AccessibilityService is not subject to
+        // background activity launch restrictions
         val bridgeIntent = Intent(this, BridgeActivity::class.java).apply {
             putExtra(BridgeActivity.EXTRA_PACKAGE, packageName)
             putExtra(BridgeActivity.EXTRA_APP_NAME, appName)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        val fullScreenPI = PendingIntent.getActivity(
-            this, 0, bridgeIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val notification = Notification.Builder(this, AlarmReceiver.ALARM_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("定时启动")
-            .setContentText("即将启动 $appName")
-            .setCategory(Notification.CATEGORY_ALARM)
-            .setFullScreenIntent(fullScreenPI, true)
-            .setAutoCancel(true)
-            .setOngoing(false)
-            .build()
-        nm.notify(AlarmReceiver.ALARM_NOTIFY_ID, notification)
-
-        // Directly start BridgeActivity — AccessibilityService is not subject to
-        // background activity launch restrictions
         try {
             startActivity(bridgeIntent)
         } catch (e: Exception) {

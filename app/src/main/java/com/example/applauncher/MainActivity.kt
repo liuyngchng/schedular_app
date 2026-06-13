@@ -17,6 +17,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.example.applauncher.model.Diagnostics
 import com.example.applauncher.receiver.AlarmReceiver
@@ -59,18 +62,19 @@ class MainActivity : ComponentActivity() {
                     val schedule by app.scheduleRepository.schedule.collectAsState(
                         initial = null
                     )
-                    val diagnostics = schedule?.let { runDiagnostics(it) }
+                    var diagnosticsVersion by remember { mutableIntStateOf(0) }
+                    val diagnostics = remember(schedule, diagnosticsVersion) {
+                        schedule?.let { runDiagnostics(it) }
+                    }
                     HomeScreen(
                         currentSchedule = schedule,
                         diagnostics = diagnostics,
+                        onRefreshDiagnostics = { diagnosticsVersion++ },
                         onSave = { sched ->
                             CoroutineScope(Dispatchers.IO).launch {
                                 app.scheduleRepository.save(sched)
                             }
                             scheduleAlarms(sched)
-                            if (sched.enabled) {
-                                startService(Intent(this@MainActivity, LauncherService::class.java))
-                            }
                             android.widget.Toast.makeText(this@MainActivity, "设置已保存", android.widget.Toast.LENGTH_SHORT).show()
                         },
                         onToggleEnabled = { enabled ->
@@ -79,10 +83,8 @@ class MainActivity : ComponentActivity() {
                                 val sched = app.scheduleRepository.schedule.first()
                                 if (enabled && sched != null) {
                                     scheduleAlarms(sched)
-                                    startService(Intent(this@MainActivity, LauncherService::class.java))
                                 } else {
                                     AlarmReceiver.cancel(this@MainActivity)
-                                    stopService(Intent(this@MainActivity, LauncherService::class.java))
                                 }
                             }
                         }

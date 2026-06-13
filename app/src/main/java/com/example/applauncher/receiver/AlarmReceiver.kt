@@ -9,6 +9,7 @@ import com.example.applauncher.LauncherService
 import com.example.applauncher.model.Schedule
 import com.example.applauncher.model.TimeSlot
 import java.util.Calendar
+import kotlin.random.Random
 
 class AlarmReceiver : BroadcastReceiver() {
     // Not used as broadcast target — alarms go directly to LauncherService.
@@ -77,8 +78,10 @@ class AlarmReceiver : BroadcastReceiver() {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
+                // Add 1-5 minute random offset to avoid exact crowd timing
+                val offsetMs = Random.nextInt(1, 6) * 60_000L
                 alarmManager.setAlarmClock(
-                    AlarmManager.AlarmClockInfo(calendar.timeInMillis, pendingIntent),
+                    AlarmManager.AlarmClockInfo(calendar.timeInMillis + offsetMs, pendingIntent),
                     pendingIntent
                 )
             }

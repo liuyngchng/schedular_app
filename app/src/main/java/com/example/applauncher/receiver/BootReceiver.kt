@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.example.applauncher.AppLauncherApp
-import com.example.applauncher.LauncherService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -20,9 +19,6 @@ class BootReceiver : BroadcastReceiver() {
             val schedule = app.scheduleRepository.schedule.first()
             if (schedule != null) {
                 AlarmReceiver.schedule(context, schedule)
-                if (schedule.enabled) {
-                    context.startService(Intent(context, LauncherService::class.java))
-                }
             }
         }
     }

@@ -1,7 +1,9 @@
 package com.example.applauncher.ui.screens
 
 import android.content.Intent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,24 +55,29 @@ import com.example.applauncher.model.Diagnostics
 import com.example.applauncher.model.ExecutionLog
 import com.example.applauncher.model.Schedule
 import com.example.applauncher.model.TimeSlot
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     currentSchedule: Schedule?,
     diagnostics: Diagnostics?,
     onSave: (Schedule) -> Unit,
-    onToggleEnabled: (Boolean) -> Unit
+    onToggleEnabled: (Boolean) -> Unit,
+    onRefreshDiagnostics: () -> Unit = {}
 ) {
     var selectedApp by remember { mutableStateOf<AppInfo?>(null) }
     var showAppPicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var selectedSlot by remember { mutableStateOf(0) }
+    var showClearLogsDialog by remember { mutableStateOf(false) }
 
     var s1StartH by remember { mutableStateOf(currentSchedule?.slot1?.startHour ?: 9) }
     var s1StartM by remember { mutableStateOf(currentSchedule?.slot1?.startMinute ?: 0) }
@@ -120,7 +127,12 @@ fun HomeScreen(
                     !diagnostics.overlayGranted
                 ).count { it }
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = onRefreshDiagnostics
+                        ),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = if (problemCount > 0)
@@ -195,8 +207,8 @@ fun HomeScreen(
                             }
                             DiagnosticRow(
                                 ok = diagnostics.accessibilityEnabled,
-                                okText = "无障碍服务：已开启（最高优先级）",
-                                failText = "无障碍服务：未开启 → 强烈建议开启"
+                                okText = "无障碍服务：已开启",
+                                failText = "无障碍服务：未开启"
                             )
                             if (!diagnostics.accessibilityEnabled) {
                                 Row(
@@ -341,24 +353,31 @@ fun HomeScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         } else {
-                            val df = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
-                            logs.forEach { log ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 2.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        log.appName,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Text(
-                                        df.format(Date(log.timestamp)),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                            Column(
+                                modifier = Modifier.combinedClickable(
+                                    onClick = {},
+                                    onLongClick = { showClearLogsDialog = true }
+                                )
+                            ) {
+                                val df = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+                                logs.forEach { log ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 2.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            log.appName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Text(
+                                            df.format(Date(log.timestamp)),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -405,6 +424,27 @@ fun HomeScreen(
         AppPickerDialog(
             onDismiss = { showAppPicker = false },
             onAppSelected = { selectedApp = it; showAppPicker = false }
+        )
+    }
+
+    // Clear logs confirmation dialog
+    if (showClearLogsDialog) {
+        val app = LocalContext.current.applicationContext as AppLauncherApp
+        AlertDialog(
+            onDismissRequest = { showClearLogsDialog = false },
+            title = { Text("清除日志") },
+            text = { Text("确定要清除所有执行日志吗？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        app.logRepository.clearAll()
+                    }
+                    showClearLogsDialog = false
+                }) { Text("确定", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearLogsDialog = false }) { Text("取消") }
+            }
         )
     }
 

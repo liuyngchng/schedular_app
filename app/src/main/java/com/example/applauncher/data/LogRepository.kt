@@ -47,4 +47,11 @@ class LogRepository(private val context: Context) {
     private fun writeLogs(logs: List<ExecutionLog>) {
         logFile.writeText(gson.toJson(logs))
     }
+
+    suspend fun clearAll() {
+        mutex.withLock {
+            writeLogs(emptyList())
+            _logs.value = emptyList()
+        }
+    }
 }
