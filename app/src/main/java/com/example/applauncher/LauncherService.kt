@@ -67,7 +67,7 @@ class LauncherService : Service() {
         // Try AccessibilityService first (highest priority, no restrictions)
         if (LauncherAccessibilityService.launchApp(packageName, appName)) return
 
-        // Fallback: handle launch ourselves with full-screen notification
+        // Fallback: handle launch ourselves (foreground context, no restrictions)
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         @Suppress("DEPRECATION")
         val wakeLock = pm.newWakeLock(
@@ -83,8 +83,7 @@ class LauncherService : Service() {
             )
         }
 
-        // Full-screen notification to turn on screen and launch BridgeActivity
-        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        // Full-screen notification for screen-on effect
         val bridgeIntent = Intent(this, BridgeActivity::class.java).apply {
             putExtra(BridgeActivity.EXTRA_PACKAGE, packageName)
             putExtra(BridgeActivity.EXTRA_APP_NAME, appName)
@@ -94,6 +93,7 @@ class LauncherService : Service() {
             this, 0, bridgeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         val notification = Notification.Builder(this, AlarmReceiver.ALARM_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("定时启动")
@@ -104,6 +104,19 @@ class LauncherService : Service() {
             .setOngoing(false)
             .build()
         nm.notify(AlarmReceiver.ALARM_NOTIFY_ID, notification)
+
+        // Directly start BridgeActivity — foreground service is not subject to
+        // background activity launch restrictions
+        try {
+            startActivity(bridgeIntent)
+        } catch (e: Exception) {
+            Log.e("LauncherService", "startActivity failed", e)
+            CoroutineScope(Dispatchers.IO).launch {
+                (application as AppLauncherApp).logRepository.addLog(
+                    ExecutionLog(packageName, "[启动失败] $appName", System.currentTimeMillis())
+                )
+            }
+        }
 
         // Re-schedule for next week
         CoroutineScope(Dispatchers.IO).launch {

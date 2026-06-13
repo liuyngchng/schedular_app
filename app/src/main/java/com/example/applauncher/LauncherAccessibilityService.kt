@@ -62,7 +62,7 @@ class LauncherAccessibilityService : AccessibilityService() {
             )
         }
 
-        // Full-screen notification to turn on screen and launch BridgeActivity
+        // Full-screen notification for screen-on effect
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         val channel = NotificationChannel(
             AlarmReceiver.ALARM_CHANNEL_ID,
@@ -93,6 +93,19 @@ class LauncherAccessibilityService : AccessibilityService() {
             .setOngoing(false)
             .build()
         nm.notify(AlarmReceiver.ALARM_NOTIFY_ID, notification)
+
+        // Directly start BridgeActivity — AccessibilityService is not subject to
+        // background activity launch restrictions
+        try {
+            startActivity(bridgeIntent)
+        } catch (e: Exception) {
+            Log.e("AccessibilityService", "startActivity failed", e)
+            CoroutineScope(Dispatchers.IO).launch {
+                (application as AppLauncherApp).logRepository.addLog(
+                    ExecutionLog(packageName, "[启动失败] $appName", System.currentTimeMillis())
+                )
+            }
+        }
 
         // Re-schedule for next week
         CoroutineScope(Dispatchers.IO).launch {
