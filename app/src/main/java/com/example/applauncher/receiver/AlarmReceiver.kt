@@ -5,59 +5,16 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
-import com.example.applauncher.AppLauncherApp
 import com.example.applauncher.BridgeActivity
-import com.example.applauncher.model.ExecutionLog
 import com.example.applauncher.model.Schedule
 import com.example.applauncher.model.TimeSlot
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import java.util.Calendar
 
 class AlarmReceiver : BroadcastReceiver() {
+    // No longer used as a receiver — alarms now target BridgeActivity directly.
+    // This class remains for lifecycle callbacks (boot) and static helpers.
 
-    override fun onReceive(context: Context, intent: Intent) {
-        val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: return
-        val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: packageName
-
-        Log.d("AlarmReceiver", "Alarm fired: $appName ($packageName)")
-
-        val app = context.applicationContext as AppLauncherApp
-
-        // Log alarm fire event so user can see it even if BridgeActivity fails
-        CoroutineScope(Dispatchers.IO).launch {
-            app.logRepository.addLog(
-                ExecutionLog(packageName, "[闹钟触发] $appName", System.currentTimeMillis())
-            )
-        }
-
-        // Re-schedule alarms for next week
-        CoroutineScope(Dispatchers.IO).launch {
-            val sched = app.scheduleRepository.schedule.first()
-            if (sched != null && sched.enabled) {
-                schedule(context, sched)
-            }
-        }
-
-        try {
-            val bridgeIntent = Intent(context, BridgeActivity::class.java).apply {
-                putExtra(BridgeActivity.EXTRA_PACKAGE, packageName)
-                putExtra(BridgeActivity.EXTRA_APP_NAME, appName)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(bridgeIntent)
-        } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Failed to start BridgeActivity", e)
-            CoroutineScope(Dispatchers.IO).launch {
-                app.logRepository.addLog(
-                    ExecutionLog(packageName, "[启动失败] $appName", System.currentTimeMillis())
-                )
-            }
-        }
-    }
+    override fun onReceive(context: Context, intent: Intent) {}
 
     companion object {
         private const val EXTRA_PACKAGE_NAME = "package_name"
@@ -68,8 +25,8 @@ class AlarmReceiver : BroadcastReceiver() {
         fun hasAlarms(context: Context, schedule: Schedule): Boolean {
             for (base in listOf(RC_SLOT1, RC_SLOT2)) {
                 for (day in Calendar.SUNDAY..Calendar.SATURDAY) {
-                    val intent = Intent(context, AlarmReceiver::class.java)
-                    val pi = PendingIntent.getBroadcast(
+                    val intent = Intent(context, BridgeActivity::class.java)
+                    val pi = PendingIntent.getActivity(
                         context, base + day, intent,
                         PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
                     )
@@ -108,12 +65,13 @@ class AlarmReceiver : BroadcastReceiver() {
                     }
                 }
 
-                val intent = Intent(context, AlarmReceiver::class.java).apply {
-                    putExtra(EXTRA_PACKAGE_NAME, schedule.packageName)
-                    putExtra(EXTRA_APP_NAME, schedule.appName)
+                val intent = Intent(context, BridgeActivity::class.java).apply {
+                    putExtra(BridgeActivity.EXTRA_PACKAGE, schedule.packageName)
+                    putExtra(BridgeActivity.EXTRA_APP_NAME, schedule.appName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
 
-                val pendingIntent = PendingIntent.getBroadcast(
+                val pendingIntent = PendingIntent.getActivity(
                     context,
                     requestCodeBase + dayOfWeek,
                     intent,
@@ -132,8 +90,8 @@ class AlarmReceiver : BroadcastReceiver() {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             for (base in listOf(RC_SLOT1, RC_SLOT2)) {
                 for (day in Calendar.SUNDAY..Calendar.SATURDAY) {
-                    val intent = Intent(context, AlarmReceiver::class.java)
-                    val pendingIntent = PendingIntent.getBroadcast(
+                    val intent = Intent(context, BridgeActivity::class.java)
+                    val pendingIntent = PendingIntent.getActivity(
                         context,
                         base + day,
                         intent,

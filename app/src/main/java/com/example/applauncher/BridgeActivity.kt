@@ -10,14 +10,28 @@ import android.os.PowerManager
 import android.util.Log
 import android.view.WindowManager
 import com.example.applauncher.model.ExecutionLog
+import com.example.applauncher.receiver.AlarmReceiver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class BridgeActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val packageName = intent.getStringExtra(EXTRA_PACKAGE)
+        val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: packageName ?: "未知"
+
+        // Log alarm fired immediately so user sees exact trigger time
+        if (packageName != null) {
+            CoroutineScope(Dispatchers.IO).launch {
+                (application as AppLauncherApp).logRepository.addLog(
+                    ExecutionLog(packageName, "[闹钟触发] $appName", System.currentTimeMillis())
+                )
+            }
+        }
 
         // Wake up and show over lock screen
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -51,9 +65,6 @@ class BridgeActivity : Activity() {
             "AppLauncher:Bridge"
         )
         wakeLock.acquire(5000L)
-
-        val packageName = intent.getStringExtra(EXTRA_PACKAGE)
-        val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: packageName ?: "未知"
 
         if (packageName == null) {
             Log.e("BridgeActivity", "Missing target package name in intent")
@@ -104,6 +115,15 @@ class BridgeActivity : Activity() {
                 (application as AppLauncherApp).logRepository.addLog(
                     ExecutionLog(packageName, "[应用不存在] $appName 可能已被卸载", System.currentTimeMillis())
                 )
+            }
+        }
+
+        // Re-schedule alarms for next week
+        CoroutineScope(Dispatchers.IO).launch {
+            val app = application as AppLauncherApp
+            val sched = app.scheduleRepository.schedule.first()
+            if (sched != null && sched.enabled) {
+                AlarmReceiver.schedule(this@BridgeActivity, sched)
             }
         }
 
