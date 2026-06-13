@@ -13,6 +13,12 @@
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
     <!-- Request exemption from battery optimization (Doze) -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Full-screen intent to turn on screen for alarm -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Foreground service to keep app alive in background -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".AppLauncherApp"
@@ -41,6 +47,15 @@
         <receiver
             android:name=".receiver.AlarmReceiver"
             android:exported="false" />
+
+        <service
+            android:name=".LauncherService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="alarm_scheduling" />
+        </service>
 
         <receiver
             android:name=".receiver.BootReceiver"

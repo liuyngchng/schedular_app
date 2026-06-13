@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.util.Log
 import android.view.WindowManager
+import android.app.NotificationManager
 import com.example.applauncher.model.ExecutionLog
 import com.example.applauncher.receiver.AlarmReceiver
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +33,10 @@ class BridgeActivity : Activity() {
                 )
             }
         }
+
+        // Cancel the full-screen notification
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.cancel(AlarmReceiver.ALARM_NOTIFY_ID)
 
         // Wake up and show over lock screen
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {

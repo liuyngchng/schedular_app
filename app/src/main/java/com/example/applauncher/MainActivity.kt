@@ -3,6 +3,7 @@ package com.example.applauncher
 import android.app.AlarmManager
 import android.app.KeyguardManager
 import android.content.Intent
+import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -67,6 +68,9 @@ class MainActivity : ComponentActivity() {
                                 app.scheduleRepository.save(sched)
                             }
                             scheduleAlarms(sched)
+                            if (sched.enabled) {
+                                startService(Intent(this@MainActivity, LauncherService::class.java))
+                            }
                             android.widget.Toast.makeText(this@MainActivity, "设置已保存", android.widget.Toast.LENGTH_SHORT).show()
                         },
                         onToggleEnabled = { enabled ->
@@ -75,8 +79,10 @@ class MainActivity : ComponentActivity() {
                                 val sched = app.scheduleRepository.schedule.first()
                                 if (enabled && sched != null) {
                                     scheduleAlarms(sched)
+                                    startService(Intent(this@MainActivity, LauncherService::class.java))
                                 } else {
                                     AlarmReceiver.cancel(this@MainActivity)
+                                    stopService(Intent(this@MainActivity, LauncherService::class.java))
                                 }
                             }
                         }
