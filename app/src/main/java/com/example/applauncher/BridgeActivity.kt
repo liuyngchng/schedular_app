@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
+import android.util.Log
 import android.view.WindowManager
 import com.example.applauncher.model.ExecutionLog
 import kotlinx.coroutines.CoroutineScope
@@ -51,16 +52,57 @@ class BridgeActivity : Activity() {
         )
         wakeLock.acquire(5000L)
 
+        val packageName = intent.getStringExtra(EXTRA_PACKAGE)
+        val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: packageName ?: "未知"
+
+        if (packageName == null) {
+            Log.e("BridgeActivity", "Missing target package name in intent")
+            CoroutineScope(Dispatchers.IO).launch {
+                (application as AppLauncherApp).logRepository.addLog(
+                    ExecutionLog("", "[缺少目标包名]", System.currentTimeMillis())
+                )
+            }
+            wakeLock.release()
+            finish()
+            return
+        }
+
+        // Check if keyguard is still locked
+        val isKeyguardLocked =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                km.isKeyguardLocked
+            } else {
+                @Suppress("DEPRECATION")
+                km.isKeyguardLocked
+            }
+        if (isKeyguardLocked) {
+            Log.d("BridgeActivity", "Keyguard is locked — target may appear behind lock screen")
+        }
+
         // Launch target app
-        val packageName = intent.getStringExtra(EXTRA_PACKAGE) ?: run { finish(); return }
-        val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: packageName
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         if (launchIntent != null) {
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(launchIntent)
+            try {
+                startActivity(launchIntent)
+                CoroutineScope(Dispatchers.IO).launch {
+                    (application as AppLauncherApp).logRepository.addLog(
+                        ExecutionLog(packageName, appName, System.currentTimeMillis())
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("BridgeActivity", "startActivity failed for $packageName", e)
+                CoroutineScope(Dispatchers.IO).launch {
+                    (application as AppLauncherApp).logRepository.addLog(
+                        ExecutionLog(packageName, "[启动失败] 无法启动 $appName: ${e.message}", System.currentTimeMillis())
+                    )
+                }
+            }
+        } else {
+            Log.e("BridgeActivity", "Target app not installed: $packageName")
             CoroutineScope(Dispatchers.IO).launch {
-                AppLauncherApp.instance.logRepository.addLog(
-                    ExecutionLog(packageName, appName, System.currentTimeMillis())
+                (application as AppLauncherApp).logRepository.addLog(
+                    ExecutionLog(packageName, "[应用不存在] $appName 可能已被卸载", System.currentTimeMillis())
                 )
             }
         }

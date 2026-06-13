@@ -5,9 +5,15 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
+import com.example.applauncher.AppLauncherApp
 import com.example.applauncher.BridgeActivity
+import com.example.applauncher.model.ExecutionLog
 import com.example.applauncher.model.Schedule
 import com.example.applauncher.model.TimeSlot
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 class AlarmReceiver : BroadcastReceiver() {
@@ -15,12 +21,32 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: return
         val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: packageName
-        val bridgeIntent = Intent(context, BridgeActivity::class.java).apply {
-            putExtra(BridgeActivity.EXTRA_PACKAGE, packageName)
-            putExtra(BridgeActivity.EXTRA_APP_NAME, appName)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        Log.d("AlarmReceiver", "Alarm fired: $appName ($packageName)")
+
+        // Log alarm fire event so user can see it even if BridgeActivity fails
+        val app = context.applicationContext as AppLauncherApp
+        CoroutineScope(Dispatchers.IO).launch {
+            app.logRepository.addLog(
+                ExecutionLog(packageName, "[闹钟触发] $appName", System.currentTimeMillis())
+            )
         }
-        context.startActivity(bridgeIntent)
+
+        try {
+            val bridgeIntent = Intent(context, BridgeActivity::class.java).apply {
+                putExtra(BridgeActivity.EXTRA_PACKAGE, packageName)
+                putExtra(BridgeActivity.EXTRA_APP_NAME, appName)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(bridgeIntent)
+        } catch (e: Exception) {
+            Log.e("AlarmReceiver", "Failed to start BridgeActivity", e)
+            CoroutineScope(Dispatchers.IO).launch {
+                app.logRepository.addLog(
+                    ExecutionLog(packageName, "[启动失败] $appName", System.currentTimeMillis())
+                )
+            }
+        }
     }
 
     companion object {
@@ -29,11 +55,25 @@ class AlarmReceiver : BroadcastReceiver() {
         private const val RC_SLOT1 = 1001
         private const val RC_SLOT2 = 2001
 
+        fun hasAlarms(context: Context, schedule: Schedule): Boolean {
+            for (base in listOf(RC_SLOT1, RC_SLOT2)) {
+                for (day in Calendar.SUNDAY..Calendar.SATURDAY) {
+                    val intent = Intent(context, AlarmReceiver::class.java)
+                    val pi = PendingIntent.getBroadcast(
+                        context, base + day, intent,
+                        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    if (pi != null) return true
+                }
+            }
+            return false
+        }
+
         fun schedule(context: Context, schedule: Schedule) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             cancel(context)
 
-            if (!schedule.enabled || schedule.daysOfWeek.isEmpty()) return
+            if (!schedule.enabled) return
 
             scheduleSlot(context, alarmManager, schedule, schedule.slot1, RC_SLOT1)
             scheduleSlot(context, alarmManager, schedule, schedule.slot2, RC_SLOT2)
@@ -46,7 +86,7 @@ class AlarmReceiver : BroadcastReceiver() {
             slot: TimeSlot,
             requestCodeBase: Int
         ) {
-            for (dayOfWeek in schedule.daysOfWeek) {
+            for (dayOfWeek in Calendar.SUNDAY..Calendar.SATURDAY) {
                 val calendar = Calendar.getInstance().apply {
                     set(Calendar.DAY_OF_WEEK, dayOfWeek)
                     set(Calendar.HOUR_OF_DAY, slot.startHour)

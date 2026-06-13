@@ -2,12 +2,9 @@ package com.example.applauncher.ui.screens
 
 import android.content.Intent
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import com.example.applauncher.AppLauncherApp
 import com.example.applauncher.BridgeActivity
 import com.example.applauncher.model.AppInfo
+import com.example.applauncher.model.Diagnostics
 import com.example.applauncher.model.ExecutionLog
 import com.example.applauncher.model.Schedule
 import com.example.applauncher.model.TimeSlot
@@ -61,10 +59,11 @@ import java.util.Date
 import java.util.Locale
 
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     currentSchedule: Schedule?,
+    diagnostics: Diagnostics?,
     onSave: (Schedule) -> Unit,
     onToggleEnabled: (Boolean) -> Unit
 ) {
@@ -80,9 +79,6 @@ fun HomeScreen(
     var s2StartM by remember { mutableStateOf(currentSchedule?.slot2?.startMinute ?: 0) }
 
     var enabled by remember { mutableStateOf(currentSchedule?.enabled ?: false) }
-    var selectedDays by remember {
-        mutableStateOf(currentSchedule?.daysOfWeek ?: emptySet())
-    }
 
     LaunchedEffect(currentSchedule) {
         if (currentSchedule != null && selectedApp == null) {
@@ -92,7 +88,6 @@ fun HomeScreen(
             s2StartH = currentSchedule.slot2.startHour
             s2StartM = currentSchedule.slot2.startMinute
             enabled = currentSchedule.enabled
-            selectedDays = currentSchedule.daysOfWeek
         }
     }
 
@@ -109,6 +104,98 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            val context = LocalContext.current
+
+            // Self-check diagnostics
+            var showDiagnostics by remember { mutableStateOf(false) }
+            if (diagnostics != null) {
+                val problemCount = listOf(
+                    !diagnostics.exactAlarmGranted,
+                    !diagnostics.batteryWhitelisted,
+                    diagnostics.hasLockScreen,
+                    !diagnostics.targetAppInstalled,
+                    diagnostics.scheduleEnabled && !diagnostics.alarmsRegistered,
+                    diagnostics.missedSchedules.isNotEmpty()
+                ).count { it }
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (problemCount > 0)
+                            MaterialTheme.colorScheme.errorContainer
+                        else
+                            MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (problemCount > 0) "⚠ 自检 — $problemCount 项异常"
+                                       else "✓ 自检 — 一切正常",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            TextButton(onClick = { showDiagnostics = !showDiagnostics }) {
+                                Text(if (showDiagnostics) "收起" else "展开")
+                            }
+                        }
+                        if (showDiagnostics) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            DiagnosticRow(
+                                ok = diagnostics.exactAlarmGranted,
+                                okText = "精确闹钟权限：已授予",
+                                failText = "精确闹钟权限：未授予 → 点击展开后去系统设置开启"
+                            )
+                            DiagnosticRow(
+                                ok = diagnostics.batteryWhitelisted,
+                                okText = "电池优化白名单：已加入",
+                                failText = "电池优化白名单：未加入 → 建议设为不优化"
+                            )
+                            DiagnosticRow(
+                                ok = !diagnostics.hasLockScreen,
+                                okText = "锁屏状态：无锁屏密码",
+                                failText = "锁屏状态：有锁屏密码 → 目标App会启动在锁屏后面"
+                            )
+                            DiagnosticRow(
+                                ok = diagnostics.targetAppInstalled,
+                                okText = "目标应用：${diagnostics.targetAppName} 已安装",
+                                failText = "目标应用：${diagnostics.targetAppName} 可能已卸载"
+                            )
+                            if (diagnostics.scheduleEnabled) {
+                                DiagnosticRow(
+                                    ok = diagnostics.alarmsRegistered,
+                                    okText = "闹钟注册：已注册",
+                                    failText = "闹钟注册：未找到已注册的闹钟 → 重新保存试试"
+                                )
+                            } else {
+                                DiagnosticRow(
+                                    ok = false,
+                                    okText = "",
+                                    failText = "定时未启用 → 请打开「启用定时」开关"
+                                )
+                            }
+                            if (!diagnostics.hasSchedule) {
+                                DiagnosticRow(
+                                    ok = false,
+                                    okText = "",
+                                    failText = "尚未设置定时任务 → 请选择应用和时间后保存"
+                                )
+                            }
+                            diagnostics.missedSchedules.forEach { missed ->
+                                DiagnosticRow(
+                                    ok = false,
+                                    okText = "",
+                                    failText = "错过执行：$missed"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // App selection
             Card(
                 modifier = Modifier
@@ -139,14 +226,32 @@ fun HomeScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        listOf("时段一", "时段二").forEachIndexed { index, label ->
-                            FilterChip(
-                                selected = selectedSlot == index,
-                                onClick = { selectedSlot = index },
-                                label = { Text(label) }
-                            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("时段一", "时段二").forEachIndexed { index, label ->
+                                FilterChip(
+                                    selected = selectedSlot == index,
+                                    onClick = { selectedSlot = index },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        TextButton(
+                            onClick = {
+                                selectedApp?.let { app ->
+                                    val intent = Intent(context, BridgeActivity::class.java).apply {
+                                        putExtra(BridgeActivity.EXTRA_PACKAGE, app.packageName)
+                                        putExtra(BridgeActivity.EXTRA_APP_NAME, app.appName)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                }
+                            },
+                            enabled = selectedApp != null
+                        ) {
+                            Text("测试")
                         }
                     }
                     Spacer(modifier = Modifier.height(12.dp))
@@ -165,69 +270,6 @@ fun HomeScreen(
                             String.format("%02d:%02d", h, m),
                             style = MaterialTheme.typography.bodyLarge
                         )
-                    }
-                }
-            }
-
-            // Day of week
-            var showDays by remember { mutableStateOf(false) }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) { showDays = !showDays }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("重复日期", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            if (showDays) "▲" else "▼",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (showDays) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            val dayNames = listOf("周日", "周一", "周二", "周三", "周四", "周五", "周六")
-                            for (day in Calendar.SUNDAY..Calendar.SATURDAY) {
-                                FilterChip(
-                                    selected = day in selectedDays,
-                                    onClick = {
-                                        selectedDays = if (day in selectedDays) selectedDays - day
-                                                       else selectedDays + day
-                                    },
-                                    label = { Text(dayNames[day - 1]) }
-                                )
-                            }
-                            val context = LocalContext.current
-                            Button(
-                                onClick = {
-                                    selectedApp?.let { app ->
-                                        val intent = Intent(context, BridgeActivity::class.java).apply {
-                                            putExtra(BridgeActivity.EXTRA_PACKAGE, app.packageName)
-                                            putExtra(BridgeActivity.EXTRA_APP_NAME, app.appName)
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        context.startActivity(intent)
-                                    }
-                                },
-                                enabled = selectedApp != null
-                            ) {
-                                Text("测试")
-                            }
-                        }
                     }
                 }
             }
@@ -294,20 +336,20 @@ fun HomeScreen(
                             appName = app.appName,
                             slot1 = TimeSlot(s1StartH, s1StartM),
                             slot2 = TimeSlot(s2StartH, s2StartM),
-                            daysOfWeek = selectedDays,
+                            daysOfWeek = (Calendar.SUNDAY..Calendar.SATURDAY).toSet(),
                             enabled = enabled
                         )
                     )
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                enabled = selectedApp != null && selectedDays.isNotEmpty()
+                enabled = selectedApp != null
             ) {
                 Text("保存")
             }
 
-            if (selectedApp == null || selectedDays.isEmpty()) {
+            if (selectedApp == null) {
                 Text(
-                    "请选择应用和至少一个重复日期",
+                    "请选择应用",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.fillMaxWidth(),
@@ -345,6 +387,31 @@ fun HomeScreen(
     }
 }
 
+
+@Composable
+private fun DiagnosticRow(ok: Boolean, okText: String, failText: String) {
+    val text = if (ok) okText else failText
+    val color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = if (ok) "✓" else "✗",
+            color = color,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.width(20.dp)
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = color,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
