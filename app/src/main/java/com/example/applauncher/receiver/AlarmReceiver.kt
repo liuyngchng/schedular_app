@@ -13,6 +13,7 @@ import com.example.applauncher.model.Schedule
 import com.example.applauncher.model.TimeSlot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -24,12 +25,21 @@ class AlarmReceiver : BroadcastReceiver() {
 
         Log.d("AlarmReceiver", "Alarm fired: $appName ($packageName)")
 
-        // Log alarm fire event so user can see it even if BridgeActivity fails
         val app = context.applicationContext as AppLauncherApp
+
+        // Log alarm fire event so user can see it even if BridgeActivity fails
         CoroutineScope(Dispatchers.IO).launch {
             app.logRepository.addLog(
                 ExecutionLog(packageName, "[闹钟触发] $appName", System.currentTimeMillis())
             )
+        }
+
+        // Re-schedule alarms for next week
+        CoroutineScope(Dispatchers.IO).launch {
+            val sched = app.scheduleRepository.schedule.first()
+            if (sched != null && sched.enabled) {
+                schedule(context, sched)
+            }
         }
 
         try {
@@ -93,7 +103,6 @@ class AlarmReceiver : BroadcastReceiver() {
                     set(Calendar.MINUTE, slot.startMinute)
                     set(Calendar.SECOND, 0)
                     set(Calendar.MILLISECOND, 0)
-                    add(Calendar.MINUTE, (1..5).random())
                     if (before(Calendar.getInstance())) {
                         add(Calendar.WEEK_OF_YEAR, 1)
                     }
@@ -111,10 +120,9 @@ class AlarmReceiver : BroadcastReceiver() {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
-                alarmManager.setRepeating(
+                alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
                     calendar.timeInMillis,
-                    AlarmManager.INTERVAL_DAY * 7,
                     pendingIntent
                 )
             }
