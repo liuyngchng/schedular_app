@@ -10,6 +10,5 @@ data class Schedule(
     val appName: String,
     val slot1: TimeSlot,
     val slot2: TimeSlot,
-    val daysOfWeek: Set<Int>, // Calendar.SUNDAY..SATURDAY
     val enabled: Boolean
 )

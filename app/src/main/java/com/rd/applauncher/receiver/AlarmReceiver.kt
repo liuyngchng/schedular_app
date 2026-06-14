@@ -22,7 +22,7 @@ class AlarmReceiver : BroadcastReceiver() {
         private const val RC_SLOT1 = 1001
         private const val RC_SLOT2 = 2001
 
-        fun hasAlarms(context: Context, schedule: Schedule): Boolean {
+        fun hasAlarms(context: Context): Boolean {
             for (base in listOf(RC_SLOT1, RC_SLOT2)) {
                 for (day in Calendar.SUNDAY..Calendar.SATURDAY) {
                     val intent = Intent(context, LauncherService::class.java)

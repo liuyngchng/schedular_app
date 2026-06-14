@@ -1,6 +1,9 @@
 package com.rd.applauncher
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.os.PowerManager
@@ -41,50 +44,88 @@ class LauncherService : Service() {
         Log.d("LauncherService", "Random delay: ${delayMs / 1000}s")
 
         val pm = getSystemService(POWER_SERVICE) as PowerManager
+
         @Suppress("DEPRECATION")
-        val wakeLock = pm.newWakeLock(
-            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-            "AppLauncher:Alarm"
+        val cpuLock = pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "AppLauncher:Delay"
         )
-        wakeLock.acquire(10 * 60_000L)
+        cpuLock.acquire(delayMs + 30_000L)
 
         CoroutineScope(Dispatchers.Main).launch {
-            delay(delayMs)
-
-            CoroutineScope(Dispatchers.IO).launch {
-                (application as AppLauncherApp).logRepository.addLog(
-                    ExecutionLog(packageName, "[闹钟触发] $appName", System.currentTimeMillis())
-                )
-            }
-
-            if (!LauncherAccessibilityService.launchApp(packageName, appName)) {
-                val bridgeIntent = Intent(this@LauncherService, BridgeActivity::class.java).apply {
-                    putExtra(BridgeActivity.EXTRA_PACKAGE, packageName)
-                    putExtra(BridgeActivity.EXTRA_APP_NAME, appName)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
+            var wakeLock: PowerManager.WakeLock? = null
+            try {
                 try {
-                    startActivity(bridgeIntent)
+                    delay(delayMs)
+                } finally {
+                    cpuLock.release()
+                }
+
+                @Suppress("DEPRECATION")
+                val wl = pm.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "AppLauncher:Alarm"
+                )
+                wakeLock = wl
+                wl.acquire(10 * 60_000L)
+
+                // Log
+                try {
+                    (application as AppLauncherApp).logRepository.addLog(
+                        ExecutionLog(packageName, "[闹钟触发] $appName", System.currentTimeMillis())
+                    )
                 } catch (e: Exception) {
-                    Log.e("LauncherService", "startActivity failed", e)
-                    CoroutineScope(Dispatchers.IO).launch {
-                        (application as AppLauncherApp).logRepository.addLog(
-                            ExecutionLog(packageName, "[启动失败] $appName", System.currentTimeMillis())
-                        )
-                    }
+                    Log.e("LauncherService", "log failed", e)
                 }
-            }
 
-            CoroutineScope(Dispatchers.IO).launch {
-                val app = application as AppLauncherApp
-                val sched = app.scheduleRepository.schedule.first()
-                if (sched != null && sched.enabled) {
-                    AlarmReceiver.schedule(this@LauncherService, sched)
+                // Launch target app
+                launchTarget(packageName, appName, startId)
+
+            } catch (e: Exception) {
+                Log.e("LauncherService", "handleAlarm failed", e)
+                try {
+                    (application as AppLauncherApp).logRepository.addLog(
+                        ExecutionLog(packageName, "[执行异常] $appName: ${e.message}", System.currentTimeMillis())
+                    )
+                } catch (_: Exception) {}
+            } finally {
+                wakeLock?.release()
+                // Reschedule next alarms regardless of success/failure
+                try {
+                    rescheduleAlarms()
+                } catch (e: Exception) {
+                    Log.e("LauncherService", "reschedule failed", e)
                 }
+                stopSelf(startId)
             }
+        }
+    }
 
-            wakeLock.release()
-            stopSelf(startId)
+    private fun launchTarget(packageName: String, appName: String, startId: Int) {
+        if (LauncherAccessibilityService.launchApp(packageName, appName)) return
+
+        // Accessibility service not available — use AlarmManager to trigger BridgeActivity.
+        // Direct startActivity() from a background Service is blocked on Android 10+,
+        // but AlarmManager-triggered PendingIntent works reliably.
+        val bridgeIntent = Intent(this, BridgeActivity::class.java).apply {
+            putExtra(BridgeActivity.EXTRA_PACKAGE, packageName)
+            putExtra(BridgeActivity.EXTRA_APP_NAME, appName)
+        }
+        val pi = PendingIntent.getActivity(
+            this,
+            startId,
+            bridgeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager.setExact(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 100, pi)
+    }
+
+    private suspend fun rescheduleAlarms() {
+        val app = application as AppLauncherApp
+        val sched = app.scheduleRepository.schedule.first()
+        if (sched != null && sched.enabled) {
+            AlarmReceiver.schedule(this, sched)
         }
     }
 

@@ -28,9 +28,6 @@ class ScheduleRepository(private val context: Context) {
                 startHour = prefs[KEY_S2_START_H] ?: 14,
                 startMinute = prefs[KEY_S2_START_M] ?: 0
             ),
-            daysOfWeek = prefs[KEY_DAYS]?.split(",")
-                ?.mapNotNull { it.toIntOrNull() }
-                ?.toSet() ?: emptySet(),
             enabled = prefs[KEY_ENABLED] ?: false
         )
     }
@@ -43,7 +40,6 @@ class ScheduleRepository(private val context: Context) {
             prefs[KEY_S1_START_M] = schedule.slot1.startMinute
             prefs[KEY_S2_START_H] = schedule.slot2.startHour
             prefs[KEY_S2_START_M] = schedule.slot2.startMinute
-            prefs[KEY_DAYS] = schedule.daysOfWeek.joinToString(",")
             prefs[KEY_ENABLED] = schedule.enabled
         }
     }
@@ -61,7 +57,6 @@ class ScheduleRepository(private val context: Context) {
         private val KEY_S1_START_M = intPreferencesKey("s1_start_m")
         private val KEY_S2_START_H = intPreferencesKey("s2_start_h")
         private val KEY_S2_START_M = intPreferencesKey("s2_start_m")
-        private val KEY_DAYS = stringPreferencesKey("days")
         private val KEY_ENABLED = booleanPreferencesKey("enabled")
     }
 }

@@ -151,7 +151,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun runDiagnostics(schedule: com.rd.applauncher.model.Schedule): Diagnostics {
-        val app = application as AppLauncherApp
         val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
         val hasLockScreen = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             km.isDeviceSecure
@@ -160,7 +159,7 @@ class MainActivity : ComponentActivity() {
             km.isKeyguardSecure
         }
         val targetInstalled = packageManager.getLaunchIntentForPackage(schedule.packageName) != null
-        val alarmsOk = schedule.enabled && AlarmReceiver.hasAlarms(this, schedule)
+        val alarmsOk = schedule.enabled && AlarmReceiver.hasAlarms(this)
 
         // Check if our AccessibilityService is enabled
         val accessibilityEnabled = try {

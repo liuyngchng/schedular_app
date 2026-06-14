@@ -59,7 +59,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -380,14 +379,13 @@ fun HomeScreen(
             // Save button
             Button(
                 onClick = {
-                    val app = selectedApp ?: return@Button
+                    val selected = selectedApp ?: return@Button
                     onSave(
                         Schedule(
-                            packageName = app.packageName,
-                            appName = app.appName,
+                            packageName = selected.packageName,
+                            appName = selected.appName,
                             slot1 = TimeSlot(s1StartH, s1StartM),
                             slot2 = TimeSlot(s2StartH, s2StartM),
-                            daysOfWeek = (Calendar.SUNDAY..Calendar.SATURDAY).toSet(),
                             enabled = enabled
                         )
                     )

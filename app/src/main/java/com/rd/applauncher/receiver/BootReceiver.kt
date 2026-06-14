@@ -14,11 +14,16 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
 
+        val pendingResult = goAsync()
         val app = context.applicationContext as AppLauncherApp
         CoroutineScope(Dispatchers.IO).launch {
-            val schedule = app.scheduleRepository.schedule.first()
-            if (schedule != null) {
-                AlarmReceiver.schedule(context, schedule)
+            try {
+                val schedule = app.scheduleRepository.schedule.first()
+                if (schedule != null) {
+                    AlarmReceiver.schedule(context, schedule)
+                }
+            } finally {
+                pendingResult.finish()
             }
         }
     }
